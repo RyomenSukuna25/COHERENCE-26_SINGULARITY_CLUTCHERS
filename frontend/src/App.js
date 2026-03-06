@@ -1,29 +1,8 @@
-import WorkflowBuilder from "./pages/WorkflowBuilder"
-import { useState } from "react"
-import LeadUpload from "./components/LeadUpload"
-import LeadTable from "./components/LeadTable"
+import { useState, useEffect } from 'react'
+import Dashboard from './pages/Dashboard'
 
+// TEMPORARY — skip login for now, go straight to dashboard
+// Jay will add Firebase config later
 export default function App() {
-
-  const [leads, setLeads] = useState([])
-
-  return (
-
-    <div style={{ padding: "40px" }}>
-
-      <h1>⚡ NEXUS Lead Manager</h1>
-
-      <LeadUpload onLeadsLoaded={setLeads} />
-
-      <br />
-
-      <LeadTable leads={leads} />
-
-      <br />
-
-      <WorkflowBuilder />
-
-    </div>
-
-  )
+  return <Dashboard user={{ displayName: 'Chirag' }} />
 }
