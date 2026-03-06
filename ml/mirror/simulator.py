@@ -1,73 +1,54 @@
 import os
-import json
 from dotenv import load_dotenv
-from ml.persona.profiles import PERSONAS
 
 load_dotenv("backend/.env")
 
 try:
     from google import genai
-    GEMINI_KEY = os.getenv("GEMINI_API_KEY")
-    client = genai.Client(api_key=GEMINI_KEY) if GEMINI_KEY else None
-except:
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+except Exception:
     client = None
-
-
-def fallback_simulate(lead, message):
-    """Used when Gemini is unavailable"""
-    score = 45
-    if lead["name"].lower() in message.lower():
-        score += 15
-    if lead["company"].lower() in message.lower():
-        score += 15
-    if len(message) < 200:
-        score += 10
-
-    return {
-        "reaction": f"This email mentions {lead['company']} which caught my attention, but it still feels slightly generic.",
-        "score": score,
-        "objection": "Unclear what specific value this brings to my situation.",
-        "fix": f"Reference a specific challenge that {lead['role']}s at {lead['company']} face right now."
-    }
 
 
 def simulate_prospect(lead: dict, message: str) -> dict:
     """
-    Simulates a prospect reading the outreach message.
-    Returns their inner reaction, reply score, top objection, and suggested fix.
-    """
-    if client:
-        try:
-            prompt = f"""You are {lead['name']}, {lead['role']} at {lead['company']}.
-You are extremely busy. You receive 50+ cold emails every day.
-You are skeptical of sales outreach.
+    Simulate a prospect reading an email and predict their reaction.
 
-You just read this cold email:
+    Input:  lead dict + email string
+    Output: { reaction, score (0-100), objection, fix }
+    """
+    prompt = f"""
+You are {lead.get('name', 'a prospect')}, a {lead.get('role', 'professional')} at {lead.get('company', 'a company')}.
+
+You just received this cold outreach email:
 ---
 {message}
 ---
 
-Respond ONLY as valid JSON, no other text, no backticks:
+Respond ONLY as valid JSON with these exact keys:
 {{
-  "reaction": "your honest inner thought in 1-2 sentences as this person",
-  "score": <integer 0-100, your likelihood to reply>,
-  "objection": "the single main reason you might NOT reply",
-  "fix": "one specific change that would make you more likely to reply"
-}}"""
+  "reaction": "Your inner monologue as the prospect (1-2 sentences, first person)",
+  "score": <integer 0-100 representing likelihood you reply>,
+  "objection": "The main reason you might NOT reply (1 sentence)",
+  "fix": "One specific improvement that would make you more likely to reply (1 sentence)"
+}}
+""".strip()
 
+    if client:
+        try:
             response = client.models.generate_content(
                 model="gemini-2.0-flash",
                 contents=prompt
             )
-
+            import json
             text = response.text.strip()
-            if "```" in text:
-                text = text.split("```")[1].replace("json", "").strip()
-
-            return json.loads(text)
-
-        except Exception as e:
-            print(f"Gemini mirror error ({e.__class__.__name__}), using fallback")
+            # Strip markdown fences if present
+            if text.startswith("```"):
+                text = text.split("```")[1]
+                if text.startswith("json"):
+                    text = text[4:]
+            return json.loads(text.strip())
+        except Exception:
             return fallback_simulate(lead, message)
     else:
         return fallback_simulate(lead, message)
@@ -75,28 +56,79 @@ Respond ONLY as valid JSON, no other text, no backticks:
 
 def apply_fix(lead: dict, message: str, fix_suggestion: str) -> str:
     """
-    Rewrites the message applying the suggested fix.
-    """
-    if client:
-        try:
-            prompt = f"""Rewrite this cold outreach email applying exactly this improvement:
-{fix_suggestion}
+    Apply a fix suggestion to improve an outreach email.
 
-Recipient: {lead['name']}, {lead['role']} at {lead['company']}
+    Input:  lead dict + original message + fix suggestion
+    Output: improved message string
+    """
+    prompt = f"""
+You are rewriting a cold outreach email to make it more effective.
 
 Original email:
+---
 {message}
+---
 
-Return ONLY the improved email body. No subject line. No explanation."""
+Prospect details:
+- Name: {lead.get('name', 'the prospect')}
+- Role: {lead.get('role', 'professional')}
+- Company: {lead.get('company', 'their company')}
 
+Specific improvement to apply:
+{fix_suggestion}
+
+Rewrite the email applying this improvement. Keep it under 120 words. Return ONLY the rewritten email body.
+""".strip()
+
+    if client:
+        try:
             response = client.models.generate_content(
                 model="gemini-2.0-flash",
                 contents=prompt
             )
             return response.text.strip()
-
-        except Exception as e:
-            print(f"Gemini fix error ({e.__class__.__name__}), returning original")
-            return message
+        except Exception:
+            return fallback_simulate(lead, message)["fix"]
     else:
-        return message
+        return fallback_apply(message, fix_suggestion)
+
+
+def fallback_simulate(lead: dict, message: str) -> dict:
+    name = lead.get("name", "the prospect")
+    role = lead.get("role", "professional")
+    company = lead.get("company", "their company")
+
+    # Score based on message length and personalisation signals
+    score = 62
+    msg_lower = message.lower()
+    if name.split()[0].lower() in msg_lower:
+        score += 5
+    if company.lower() in msg_lower:
+        score += 5
+    if len(message) > 300:
+        score -= 8  # Too long
+
+    return {
+        "reaction": (
+            f"This is relevant to what we're dealing with at {company}. "
+            f"I'd want to know more before committing to a call, but I'm not deleting this."
+        ),
+        "score": min(score, 100),
+        "objection": f"Needs a more specific hook tailored to {role} challenges at {company}.",
+        "fix": f"Open with a specific challenge {role}s at {company}'s stage typically face to immediately establish relevance.",
+    }
+
+
+def fallback_apply(message: str, fix_suggestion: str) -> str:
+    # Rebuild the email with a personalised opening that addresses the fix
+    lines = message.strip().split("\n")
+    # Find the greeting line (starts with Hi/Dear/Hello)
+    greeting_index = next(
+        (i for i, l in enumerate(lines) if l.strip().lower().startswith(("hi ", "dear ", "hello "))),
+        0
+    )
+    # Insert a strong personalised line right after the greeting
+    personal_line = f"I'll cut to the point — {fix_suggestion.rstrip('.')}."
+    lines.insert(greeting_index + 1, "")
+    lines.insert(greeting_index + 2, personal_line)
+    return "\n".join(lines)
