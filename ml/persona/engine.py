@@ -5,10 +5,14 @@ from ml.persona.profiles import PERSONAS, assign_persona
 load_dotenv("backend/.env")
 
 try:
-    import anthropic
-    CLAUDE_KEY = os.getenv("ANTHROPIC_API_KEY")
-    client = anthropic.Anthropic(api_key=CLAUDE_KEY) if CLAUDE_KEY else None
-except:
+    from google import genai
+    GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+    if GEMINI_KEY:
+        client = genai.Client(api_key=GEMINI_KEY)
+    else:
+        client = None
+except Exception as e:
+    print(f"Gemini import failed: {e}")
     client = None
 
 
@@ -55,8 +59,10 @@ def generate_message(lead: dict, objective: str = "schedule a call") -> dict:
     persona = PERSONAS[persona_key]
 
     if client:
-        user_prompt = f"""Write a cold outreach email for this lead.
+        try:
+            prompt = f"""{persona['system_prompt']}
 
+Write a cold outreach email for this lead:
 Name: {lead['name']}
 Company: {lead['company']}
 Role: {lead['role']}
@@ -65,13 +71,15 @@ Objective: {objective}
 
 Maximum {persona['max_words']} words. Write ONLY the email body."""
 
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=300,
-            system=persona["system_prompt"],
-            messages=[{"role": "user", "content": user_prompt}]
-        )
-        message = response.content[0].text
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt
+            )
+            message = response.text
+
+        except Exception as e:
+            print(f"Gemini error ({e.__class__.__name__}): {e}")
+            message = fallback_message(lead, persona)
     else:
         message = fallback_message(lead, persona)
 
