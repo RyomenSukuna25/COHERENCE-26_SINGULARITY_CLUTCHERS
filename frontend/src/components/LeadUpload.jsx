@@ -9,6 +9,34 @@ const CARD = {
   borderRadius: 16,
 }
 
+const DEMO_LEADS = [
+  { id:'1', name:'Rahul Sharma', company:'TechCorp', role:'CTO', persona:'dev',
+    status:'replied', score:82, email:'rahul@techcorp.com', industry:'Technology',
+    pain_points:['Engineering team scaling too fast','Technical debt accumulating','Outreach pipeline broken'],
+    hook:'TechCorp hiring 12 engineers — classic scaling inflection point.',
+    approach:'Lead with engineering benchmark stat on hiring cycles' },
+  { id:'2', name:'Priya Mehta', company:'StartupXYZ', role:'HR Manager', persona:'priya',
+    status:'opened', score:61, email:'priya@startupxyz.com', industry:'HR Tech',
+    pain_points:['3+ hours/day on manual outreach','No visibility into follow-up performance','Team coordination gaps'],
+    hook:'StartupXYZ doubled headcount — HR ops at breaking point?',
+    approach:'Lead with time savings and emotional relief' },
+  { id:'3', name:'Arjun Singh', company:'ScaleUp Inc', role:'CEO', persona:'arjun',
+    status:'replied', score:88, email:'arjun@scaleup.com', industry:'SaaS',
+    pain_points:['Revenue plateaued at $2M ARR','Generic outreach getting ignored','Losing deals to faster competitors'],
+    hook:'ScaleUp raised Series A 3 months ago — outreach still manual?',
+    approach:'Lead with revenue impact and urgency' },
+  { id:'4', name:'Neha Kapoor', company:'FinFlow', role:'VP Sales', persona:'arjun',
+    status:'sent', score:71, email:'neha@finflow.com', industry:'Fintech',
+    pain_points:['Cold outreach conversion under 2%','Pipeline visibility is poor','Inconsistent follow-up'],
+    hook:'FinFlow expanding to 3 markets — sales stack ready?',
+    approach:'Lead with pipeline conversion benchmarks' },
+  { id:'5', name:'Vikram Iyer', company:'DataLens', role:'CTO', persona:'dev',
+    status:'sent', score:76, email:'vikram@datalens.com', industry:'Data',
+    pain_points:['10TB/day pipeline with no smart routing','Engineering hiring slow','Tech debt growing'],
+    hook:'DataLens at 10TB/day — outreach still on spreadsheets?',
+    approach:'Lead with engineering productivity metrics' },
+]
+
 export default function LeadUpload({ onLeadsLoaded }) {
   const [dragging, setDragging] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -19,6 +47,8 @@ export default function LeadUpload({ onLeadsLoaded }) {
   const ref = useRef()
 
   const addStep = (text, color='#a855f7') => setSteps(prev => [...prev, { text, color, ts: Date.now() }])
+
+  const delay = ms => new Promise(r => setTimeout(r, ms))
 
   const upload = async (file) => {
     if (!file) return
@@ -59,15 +89,15 @@ export default function LeadUpload({ onLeadsLoaded }) {
       addStep('> AI enrichment complete — 5 demo leads loaded.', '#22c55e')
       await delay(400)
       addStep('> Mirror scores calculated. Personas assigned.', '#22c55e')
-      setCount(5)
+      setCount(DEMO_LEADS.length)
+      setUploadedLeads(DEMO_LEADS)   // ✅ FIXED — was missing
+      onLeadsLoaded(DEMO_LEADS)      // ✅ FIXED — was missing
     }
 
     await delay(300)
     setDone(true)
     setLoading(false)
   }
-
-  const delay = ms => new Promise(r => setTimeout(r, ms))
 
   const onDrop = (e) => {
     e.preventDefault(); setDragging(false)

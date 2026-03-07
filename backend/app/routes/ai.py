@@ -23,12 +23,12 @@ def normalize_lead(data: dict) -> dict:
     if "lead" in data and isinstance(data.get("lead"), dict):
         return data["lead"]
     return {
-        "name":       data.get("lead_name", ""),
-        "email":      data.get("lead_email", ""),
-        "company":    data.get("lead_company", ""),
-        "role":       data.get("lead_role", ""),
-        "industry":   data.get("lead_industry", ""),
-        "linkedin":   data.get("lead_linkedin", ""),
+        "name":        data.get("lead_name", ""),
+        "email":       data.get("lead_email", ""),
+        "company":     data.get("lead_company", ""),
+        "role":        data.get("lead_role", ""),
+        "industry":    data.get("lead_industry", ""),
+        "linkedin":    data.get("lead_linkedin", ""),
         "pain_points": data.get("pain_points", ""),
     }
 
@@ -37,13 +37,13 @@ def fix_persona(p):
     return {"arjun":"Arjun","priya":"Priya","dev":"Dev"}.get(p.lower(), p.capitalize())
 
 class GenerateRequest(BaseModel):
-    lead_name:    Optional[str] = ""
-    lead_company: Optional[str] = ""
-    lead_role:    Optional[str] = ""
-    lead_email:   Optional[str] = ""
-    lead_industry:Optional[str] = ""
-    persona:      Optional[str] = None
-    lead:         Optional[dict] = None
+    lead_name:     Optional[str] = ""
+    lead_company:  Optional[str] = ""
+    lead_role:     Optional[str] = ""
+    lead_email:    Optional[str] = ""
+    lead_industry: Optional[str] = ""
+    persona:       Optional[str] = None
+    lead:          Optional[dict] = None
 
 class MirrorRequest(BaseModel):
     lead_name:    Optional[str] = ""
@@ -85,13 +85,22 @@ class EnrichRequest(BaseModel):
 async def generate_email(req: GenerateRequest):
     lead_dict = normalize_lead(req.dict())
     persona_name = fix_persona(req.persona or assign_persona(lead_dict.get("role", "")))
-    message = generate_message(lead_dict, persona_name)
-    return {"message": message, "persona": persona_name, "lead_name": lead_dict.get("name", "")}
+    result = generate_message(lead_dict, persona_name)
+    message_text = result["message"] if isinstance(result, dict) else result
+    return {
+        "message":      message_text,
+        "persona":      result.get("persona", persona_name) if isinstance(result, dict) else persona_name,
+        "persona_name": result.get("persona_name", persona_name) if isinstance(result, dict) else persona_name,
+        "lead_name":    lead_dict.get("name", ""),
+    }
 
 @router.post("/messages/generate-all-personas")
 async def generate_all_personas(req: GenerateRequest):
     lead_dict = normalize_lead(req.dict())
-    results = {p: generate_message(lead_dict, p) for p in ["Arjun", "Priya", "Dev"]}
+    results = {}
+    for p in ["Arjun", "Priya", "Dev"]:
+        r = generate_message(lead_dict, p)
+        results[p] = r["message"] if isinstance(r, dict) else r
     return {"personas": results, "lead_name": lead_dict.get("name", "")}
 
 @router.post("/mirror/simulate")
@@ -113,15 +122,23 @@ async def mirror_simulate(req: MirrorRequest):
 async def mirror_fix(req: FixRequest):
     lead_dict = normalize_lead(req.dict())
     fixed = apply_fix(lead_dict, req.message, req.objection)
+    if isinstance(fixed, dict):
+        fixed = fixed.get("message") or fixed.get("fixed_message") or req.message
     rescore = simulate_prospect(lead_dict, fixed)
     new_score = int(rescore.get("score") or rescore.get("reply_score") or 72)
-    return {"fixed_message": fixed, "message": fixed, "new_score": new_score,
-            "verdict": "WOULD REPLY" if new_score >= 65 else "WOULD DELETE"}
+    return {
+        "fixed_message": fixed,
+        "message":       fixed,
+        "new_score":     new_score,
+        "verdict":       "WOULD REPLY" if new_score >= 65 else "WOULD DELETE",
+    }
 
 @router.post("/linkedin/draft")
 async def linkedin_draft(req: LinkedInRequest):
     lead_dict = normalize_lead(req.dict())
     message = generate_linkedin_message(lead_dict)
+    if isinstance(message, dict):
+        message = message.get("message", "")
     return {"message": message, "char_count": len(message), "lead_name": lead_dict.get("name", "")}
 
 @router.post("/leads/enrich")
@@ -132,12 +149,17 @@ async def enrich_lead(req: EnrichRequest):
 async def trigger_signal(req: SignalRequest):
     sig = req.signal_type or req.type or "Manual"
     name = req.lead_name or req.lead_id or "Unknown"
-    event = {"id": len(signal_log)+1, "lead_id": req.lead_id or name,
-             "lead_name": name, "signal_type": sig,
-             "timestamp": time.strftime("%H:%M:%S"),
-             "message": f"{name} — {sig}"}
+    event = {
+        "id":          len(signal_log) + 1,
+        "lead_id":     req.lead_id or name,
+        "lead_name":   name,
+        "signal_type": sig,
+        "timestamp":   time.strftime("%H:%M:%S"),
+        "message":     f"{name} - {sig}",
+    }
     signal_log.insert(0, event)
-    if len(signal_log) > 50: signal_log.pop()
+    if len(signal_log) > 50:
+        signal_log.pop()
     return {"status": "fired", "event": event}
 
 @router.get("/signals/feed")
@@ -148,3 +170,12 @@ async def get_signals():
 async def clear_signals():
     signal_log.clear()
     return {"status": "cleared"}
+
+@router.get("/leads/all")
+async def get_all_leads():
+    # Returns empty list if no Firebase — frontend falls back to mock leads
+    return []
+
+@router.get("/dashboard/stats")
+async def get_dashboard_stats():
+    return {"total": 50, "sent": 38, "replied": 8, "avg_score": 74}

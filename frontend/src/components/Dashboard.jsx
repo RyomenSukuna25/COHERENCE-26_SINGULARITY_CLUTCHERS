@@ -142,7 +142,7 @@ export default function Dashboard({ user, onSignOut }) {
   }, [])
 
   useEffect(() => {
-    axios.get(`${API}/leads/all`).then(r => { if (r.data?.length) setLeads(r.data) }).catch(()=>{})
+    axios.get(`${API}/leads/all`).then(r => { if (r.data?.length) setLeads(r.data) })
     axios.get(`${API}/dashboard/stats`).then(r => setStats(r.data)).catch(()=>{})
   }, [])
 
